@@ -465,7 +465,7 @@ export default function App() {
                     title={isSelected ? "Klikk for å uvelge" : "Klikk for å velge"}
                   >
                     <span className="doc-card__check" aria-hidden="true">
-                      <input type="checkbox" checked={isSelected} readOnly tabIndex={-1} />
+                      <span className="doc-card__check-icon">{isSelected ? "✓" : ""}</span>
                     </span>
                     {thumb ? (
                       <img src={thumb} alt={doc.title} className="doc-card__thumb" />
@@ -493,7 +493,7 @@ export default function App() {
         )}
       </section>
 
-      <section className="card">
+      <section className="card search-card">
         <form
           className="row"
           onSubmit={(e) => {
