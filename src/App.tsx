@@ -57,8 +57,13 @@ function normalizeUrn(urn: string): string {
   return urn.trim();
 }
 
-function toNettbibliotekUrl(urn: string): string {
-  return `https://www.nb.no/items/${encodeURIComponent(normalizeUrn(urn))}`;
+function toNettbibliotekUrl(urn: string, searchText?: string): string {
+  const base = `https://www.nb.no/items/${encodeURIComponent(normalizeUrn(urn))}`;
+  const normalizedSearch = searchText?.trim();
+  if (!normalizedSearch) {
+    return base;
+  }
+  return `${base}?searchText=${encodeURIComponent(normalizedSearch)}`;
 }
 
 async function fetchThumbnailForUrn(urn: string): Promise<string | null> {
@@ -124,6 +129,20 @@ function normalizeConcordanceRows(apiData: unknown): ConcordanceApiRow[] {
       urn: table.urn?.[idx],
       conc: table.conc?.[idx]
     }));
+}
+
+function decodeHtmlEntities(input: string): string {
+  const el = document.createElement("textarea");
+  el.innerHTML = input;
+  return el.value;
+}
+
+function toPlainTextFromHtml(html: string): string {
+  return decodeHtmlEntities(html.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+}
+
+function escapeCsvCell(value: string): string {
+  return `"${value.replace(/"/g, "\"\"")}"`;
 }
 
 export default function App() {
@@ -307,6 +326,37 @@ export default function App() {
     });
   }
 
+  function downloadConcordancesCsv() {
+    if (hits.length === 0) {
+      return;
+    }
+
+    const header = ["Tittel", "Lenke", "URN", "DokumentID", "Konkordans"];
+    const rows = hits.map((hit) => [
+      hit.title,
+      hit.nbUrl,
+      hit.urn,
+      hit.bookId,
+      toPlainTextFromHtml(hit.concHtml)
+    ]);
+
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => escapeCsvCell(String(cell ?? ""))).join(";"))
+      .join("\n");
+
+    const bom = "\uFEFF";
+    const blob = new Blob([bom, csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `konkordans-${date}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   async function runSearch() {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -365,7 +415,7 @@ export default function App() {
           concHtml: row.conc ?? "",
           year,
           title,
-          nbUrl: urn ? toNettbibliotekUrl(urn) : ""
+          nbUrl: urn ? toNettbibliotekUrl(urn, trimmed) : ""
         };
       });
 
@@ -410,7 +460,17 @@ export default function App() {
       {loadingCorpus && <p className="muted">Laster korpus...</p>}
 
       <section className="results">
-        <h2>Treff ({hits.length})</h2>
+        <div className="results__header">
+          <h2>Treff ({hits.length})</h2>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={downloadConcordancesCsv}
+            disabled={hits.length === 0}
+          >
+            Last ned CSV (Excel)
+          </button>
+        </div>
         {hits.length === 0 ? (
           <p className="muted">Ingen treff ennå.</p>
         ) : (
@@ -453,7 +513,7 @@ export default function App() {
         ) : (
           <ul className="doc-grid">
             {filteredCorpus.map((doc) => {
-              const nbUrl = doc.urn ? toNettbibliotekUrl(doc.urn) : "";
+              const nbUrl = doc.urn ? toNettbibliotekUrl(doc.urn, query) : "";
               const thumb = thumbnailsById[doc.dhlabid];
               const isSelected = selectedById[doc.dhlabid] !== false;
               return (
