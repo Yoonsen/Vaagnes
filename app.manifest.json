@@ -1,0 +1,10 @@
+{
+  "appName": "Vågnes Konkordans",
+  "description": "Enkel konkordansapp over Øyvind Vågnes-korpus.",
+  "api": {
+    "concordanceUrl": "https://api.nb.no/dhlab/conc"
+  },
+  "corpus": {
+    "metadataFile": "Øyvind_Vågnes - Korpus.csv"
+  }
+}
