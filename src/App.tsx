@@ -107,6 +107,7 @@ export default function App() {
   const [concordanceApiUrl, setConcordanceApiUrl] = useState(CONCORDANCE_API_URL);
   const [thumbnailsById, setThumbnailsById] = useState<Record<string, string>>({});
   const [loadingThumbnails, setLoadingThumbnails] = useState(false);
+  const [selectedById, setSelectedById] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -221,6 +222,19 @@ export default function App() {
     };
   }, [corpus, thumbnailsById]);
 
+  useEffect(() => {
+    if (corpus.length === 0) {
+      return;
+    }
+    setSelectedById((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const row of corpus) {
+        next[row.dhlabid] = prev[row.dhlabid] ?? true;
+      }
+      return next;
+    });
+  }, [corpus]);
+
   const corpusById = useMemo(() => {
     const map = new Map<string, CorpusRow>();
     for (const row of corpus) {
@@ -263,6 +277,38 @@ export default function App() {
     });
   }, [corpus, yearFrom, yearTo]);
 
+  const selectedFilteredCorpus = useMemo(
+    () => filteredCorpus.filter((row) => selectedById[row.dhlabid] !== false),
+    [filteredCorpus, selectedById]
+  );
+
+  function toggleDocSelection(dhlabid: string) {
+    setSelectedById((prev) => ({
+      ...prev,
+      [dhlabid]: prev[dhlabid] === false
+    }));
+  }
+
+  function selectAllFiltered() {
+    setSelectedById((prev) => {
+      const next = { ...prev };
+      for (const row of filteredCorpus) {
+        next[row.dhlabid] = true;
+      }
+      return next;
+    });
+  }
+
+  function clearAllFiltered() {
+    setSelectedById((prev) => {
+      const next = { ...prev };
+      for (const row of filteredCorpus) {
+        next[row.dhlabid] = false;
+      }
+      return next;
+    });
+  }
+
   async function runSearch() {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -273,12 +319,16 @@ export default function App() {
       setError("Ingen dokumenter i valgt årsintervall.");
       return;
     }
+    if (selectedFilteredCorpus.length === 0) {
+      setError("Ingen valgte dokumenter i utvalget.");
+      return;
+    }
 
     setSearching(true);
     setError(null);
 
     try {
-      const dhlabids = filteredCorpus.map((row) => row.dhlabid);
+      const dhlabids = selectedFilteredCorpus.map((row) => row.dhlabid);
       const resp = await fetch(concordanceApiUrl, {
         method: "POST",
         headers: {
@@ -396,27 +446,60 @@ export default function App() {
       </section>
 
       <section className="results">
-        <h2>Dokumenter ({corpus.length})</h2>
+        <h2>Dokumenter ({selectedFilteredCorpus.length} valgt / {filteredCorpus.length} i filter)</h2>
+        <div className="doc-actions">
+          <button type="button" className="button-secondary" onClick={selectAllFiltered}>
+            Velg alle
+          </button>
+          <button type="button" className="button-secondary" onClick={clearAllFiltered}>
+            Uvelg alle
+          </button>
+        </div>
         {loadingThumbnails && <p className="muted">Henter fliser fra NB...</p>}
-        {corpus.length === 0 ? (
+        {filteredCorpus.length === 0 ? (
           <p className="muted">Ingen dokumenter lastet.</p>
         ) : (
           <ul className="doc-grid">
-            {corpus.map((doc) => {
+            {filteredCorpus.map((doc) => {
               const nbUrl = doc.urn ? toNettbibliotekUrl(doc.urn) : "";
               const thumb = thumbnailsById[doc.dhlabid];
+              const isSelected = selectedById[doc.dhlabid] !== false;
               return (
-                <li key={doc.dhlabid} className="doc-card">
-                  <a href={nbUrl || undefined} target="_blank" rel="noreferrer">
+                <li
+                  key={doc.dhlabid}
+                  className={`doc-card${thumb ? "" : " doc-card--no-thumb"}${
+                    isSelected ? " is-selected" : " is-unselected"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="doc-card__surface"
+                    onClick={() => toggleDocSelection(doc.dhlabid)}
+                    aria-pressed={isSelected}
+                    title={isSelected ? "Klikk for å uvelge" : "Klikk for å velge"}
+                  >
+                    <span className="doc-card__check" aria-hidden="true">
+                      <input type="checkbox" checked={isSelected} readOnly tabIndex={-1} />
+                    </span>
                     {thumb ? (
                       <img src={thumb} alt={doc.title} className="doc-card__thumb" />
                     ) : (
-                      <div className="doc-card__placeholder">Ingen flis</div>
+                      <div className="doc-card__placeholder">Ingen thumbnail</div>
                     )}
-                  </a>
-                  <div className="doc-card__meta">
+                  </button>
+                  <div className="doc-card__meta-pop">
                     <strong>{doc.title}</strong>
                     <span className="muted">{doc.year ?? "ukjent år"}</span>
+                    {nbUrl ? (
+                      <a
+                        href={nbUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Åpne i NB
+                      </a>
+                    ) : null}
                   </div>
                 </li>
               );

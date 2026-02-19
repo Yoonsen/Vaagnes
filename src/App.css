@@ -73,6 +73,15 @@ button:disabled {
   cursor: wait;
 }
 
+.button-secondary {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.button-secondary:disabled {
+  cursor: not-allowed;
+}
+
 .results {
   margin-top: 1.5rem;
 }
@@ -131,18 +140,35 @@ button:disabled {
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
 }
 
+.doc-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
 .doc-card {
+  position: relative;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   overflow: hidden;
 }
 
+.doc-card__surface {
+  width: 100%;
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
 .doc-card__thumb,
 .doc-card__placeholder {
   display: block;
   width: 100%;
-  height: 170px;
+  height: 145px;
 }
 
 .doc-card__thumb {
@@ -152,13 +178,71 @@ button:disabled {
 .doc-card__placeholder {
   display: grid;
   place-items: center;
-  background: #f3f4f6;
+  background: #f9fafb;
   color: #6b7280;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
 }
 
-.doc-card__meta {
-  padding: 0.6rem 0.7rem 0.8rem;
+.doc-card__check {
+  position: absolute;
+  top: 0.35rem;
+  left: 0.35rem;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 6px;
+  padding: 0.15rem 0.25rem;
+}
+
+.doc-card__check input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: #1d4ed8;
+}
+
+.doc-card__meta-pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(17, 24, 39, 0.88);
+  color: #fff;
+  padding: 0.45rem 0.55rem 0.5rem;
   display: grid;
-  gap: 0.2rem;
+  gap: 0.1rem;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.doc-card:hover .doc-card__meta-pop,
+.doc-card:focus-within .doc-card__meta-pop {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.doc-card__meta-pop .muted {
+  color: #d1d5db;
+}
+
+.doc-card__meta-pop a {
+  color: #bfdbfe;
+  text-decoration: none;
+  font-size: 0.82rem;
+}
+
+.doc-card__meta-pop a:hover {
+  text-decoration: underline;
+}
+
+.doc-card--no-thumb .doc-card__placeholder {
+  height: 110px;
+}
+
+.doc-card.is-unselected {
+  opacity: 0.55;
+}
+
+.doc-card.is-unselected .doc-card__thumb {
+  filter: grayscale(0.35);
 }
