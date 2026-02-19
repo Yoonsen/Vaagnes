@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
+import * as XLSX from "xlsx";
 import manifestData from "../app.manifest.json";
 import defaultCorpusCsvUrl from "../Øyvind_Vågnes - Korpus.csv?url";
 
@@ -139,10 +140,6 @@ function decodeHtmlEntities(input: string): string {
 
 function toPlainTextFromHtml(html: string): string {
   return decodeHtmlEntities(html.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
-}
-
-function escapeCsvCell(value: string): string {
-  return `"${value.replace(/"/g, "\"\"")}"`;
 }
 
 export default function App() {
@@ -298,6 +295,17 @@ export default function App() {
     () => filteredCorpus.filter((row) => selectedById[row.dhlabid] !== false),
     [filteredCorpus, selectedById]
   );
+  const sortedHits = useMemo(
+    () =>
+      [...hits].sort((a, b) => {
+        const byTitle = a.title.localeCompare(b.title, "nb", { sensitivity: "base" });
+        if (byTitle !== 0) {
+          return byTitle;
+        }
+        return a.bookId.localeCompare(b.bookId, "nb", { sensitivity: "base" });
+      }),
+    [hits]
+  );
 
   function toggleDocSelection(dhlabid: string) {
     setSelectedById((prev) => ({
@@ -326,35 +334,23 @@ export default function App() {
     });
   }
 
-  function downloadConcordancesCsv() {
-    if (hits.length === 0) {
+  function downloadConcordancesExcel() {
+    if (sortedHits.length === 0) {
       return;
     }
 
-    const header = ["Tittel", "Lenke", "URN", "DokumentID", "Konkordans"];
-    const rows = hits.map((hit) => [
-      hit.title,
-      hit.nbUrl,
-      hit.urn,
-      hit.bookId,
-      toPlainTextFromHtml(hit.concHtml)
-    ]);
-
-    const csv = [header, ...rows]
-      .map((row) => row.map((cell) => escapeCsvCell(String(cell ?? ""))).join(";"))
-      .join("\n");
-
-    const bom = "\uFEFF";
-    const blob = new Blob([bom, csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+    const rows = sortedHits.map((hit) => ({
+      Tittel: hit.title,
+      Lenke: hit.nbUrl,
+      URN: hit.urn,
+      DokumentID: hit.bookId,
+      Konkordans: toPlainTextFromHtml(hit.concHtml)
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Konkordans");
     const date = new Date().toISOString().slice(0, 10);
-    link.href = url;
-    link.download = `konkordans-${date}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    XLSX.writeFile(workbook, `konkordans-${date}.xlsx`);
   }
 
   async function runSearch() {
@@ -443,7 +439,7 @@ export default function App() {
             void runSearch();
           }}
         >
-          <label htmlFor="query">Søk (FTS5)</label>
+          <label htmlFor="query">Søk</label>
           <input
             id="query"
             value={query}
@@ -461,21 +457,21 @@ export default function App() {
 
       <section className="results">
         <div className="results__header">
-          <h2>Treff ({hits.length})</h2>
+          <h2>Treff ({sortedHits.length})</h2>
           <button
             type="button"
             className="button-secondary"
-            onClick={downloadConcordancesCsv}
-            disabled={hits.length === 0}
+            onClick={downloadConcordancesExcel}
+            disabled={sortedHits.length === 0}
           >
-            Last ned CSV (Excel)
+            Last ned Excel (.xlsx)
           </button>
         </div>
-        {hits.length === 0 ? (
+        {sortedHits.length === 0 ? (
           <p className="muted">Ingen treff ennå.</p>
         ) : (
           <ul>
-            {hits.map((hit, idx) => (
+            {sortedHits.map((hit, idx) => (
               <li key={`${hit.bookId}-${idx}`} className="hit">
                 <div className="hit__meta">
                   <strong>{hit.title}</strong>
