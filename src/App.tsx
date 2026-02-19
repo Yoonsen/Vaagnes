@@ -94,6 +94,38 @@ function parseYear(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function normalizeConcordanceRows(apiData: unknown): ConcordanceApiRow[] {
+  if (Array.isArray(apiData)) {
+    return apiData as ConcordanceApiRow[];
+  }
+  if (!apiData || typeof apiData !== "object") {
+    return [];
+  }
+
+  const table = apiData as {
+    docid?: Record<string, string | number>;
+    dhlabid?: Record<string, string | number>;
+    urn?: Record<string, string>;
+    conc?: Record<string, string>;
+  };
+
+  const indexSet = new Set<string>([
+    ...Object.keys(table.docid ?? {}),
+    ...Object.keys(table.dhlabid ?? {}),
+    ...Object.keys(table.urn ?? {}),
+    ...Object.keys(table.conc ?? {})
+  ]);
+
+  return [...indexSet]
+    .sort((a, b) => Number(a) - Number(b))
+    .map((idx) => ({
+      docid: table.docid?.[idx],
+      dhlabid: table.dhlabid?.[idx],
+      urn: table.urn?.[idx],
+      conc: table.conc?.[idx]
+    }));
+}
+
 export default function App() {
   const [appName, setAppName] = useState("Vågnes Konkordans");
   const [corpus, setCorpus] = useState<CorpusRow[]>([]);
@@ -102,8 +134,6 @@ export default function App() {
   const [loadingCorpus, setLoadingCorpus] = useState(true);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [yearFrom, setYearFrom] = useState<number | null>(null);
-  const [yearTo, setYearTo] = useState<number | null>(null);
   const [concordanceApiUrl, setConcordanceApiUrl] = useState(CONCORDANCE_API_URL);
   const [thumbnailsById, setThumbnailsById] = useState<Record<string, string>>({});
   const [loadingThumbnails, setLoadingThumbnails] = useState(false);
@@ -243,39 +273,7 @@ export default function App() {
     return map;
   }, [corpus]);
 
-  const availableYears = useMemo(
-    () =>
-      corpus
-        .map((r) => r.year)
-        .filter((y): y is number => y !== null)
-        .sort((a, b) => a - b),
-    [corpus]
-  );
-
-  const minYear = availableYears[0] ?? null;
-  const maxYear = availableYears[availableYears.length - 1] ?? null;
-
-  useEffect(() => {
-    if (minYear !== null && maxYear !== null) {
-      setYearFrom(minYear);
-      setYearTo(maxYear);
-    }
-  }, [minYear, maxYear]);
-
-  const filteredCorpus = useMemo(() => {
-    return corpus.filter((row) => {
-      if (row.year === null) {
-        return true;
-      }
-      if (yearFrom !== null && row.year < yearFrom) {
-        return false;
-      }
-      if (yearTo !== null && row.year > yearTo) {
-        return false;
-      }
-      return true;
-    });
-  }, [corpus, yearFrom, yearTo]);
+  const filteredCorpus = corpus;
 
   const selectedFilteredCorpus = useMemo(
     () => filteredCorpus.filter((row) => selectedById[row.dhlabid] !== false),
@@ -316,7 +314,7 @@ export default function App() {
       return;
     }
     if (filteredCorpus.length === 0) {
-      setError("Ingen dokumenter i valgt årsintervall.");
+      setError("Ingen dokumenter i korpuset.");
       return;
     }
     if (selectedFilteredCorpus.length === 0) {
@@ -328,7 +326,12 @@ export default function App() {
     setError(null);
 
     try {
-      const dhlabids = selectedFilteredCorpus.map((row) => row.dhlabid);
+      const dhlabids = selectedFilteredCorpus
+        .map((row) => Number.parseInt(row.dhlabid, 10))
+        .filter((id) => Number.isFinite(id));
+      if (dhlabids.length === 0) {
+        throw new Error("Ingen gyldige dokument-IDer å søke i.");
+      }
       const resp = await fetch(concordanceApiUrl, {
         method: "POST",
         headers: {
@@ -336,7 +339,10 @@ export default function App() {
         },
         body: JSON.stringify({
           query: trimmed,
-          dhlabids
+          dhlabids,
+          window: 20,
+          limit: 1000,
+          html_formatting: true
         })
       });
 
@@ -344,8 +350,9 @@ export default function App() {
         throw new Error(`Søket feilet (${resp.status}).`);
       }
 
-      const apiData = (await resp.json()) as ConcordanceApiRow[];
-      const mapped: ConcordanceHit[] = (apiData ?? []).map((row) => {
+      const apiData = await resp.json();
+      const rows = normalizeConcordanceRows(apiData);
+      const mapped: ConcordanceHit[] = rows.map((row) => {
         const bookIdRaw = row.docid ?? row.dhlabid ?? "";
         const bookId = String(bookIdRaw);
         const meta = corpusById.get(bookId);
@@ -379,38 +386,24 @@ export default function App() {
       </header>
 
       <section className="card">
-        <div className="row">
+        <form
+          className="row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void runSearch();
+          }}
+        >
           <label htmlFor="query">Søk (FTS5)</label>
           <input
             id="query"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder='Eksempel: "Amerika" OR "England"'
+            placeholder='Eksempel: "mellom oss"'
           />
-          <button onClick={() => void runSearch()} disabled={searching || loadingCorpus}>
+          <button type="submit" disabled={searching || loadingCorpus}>
             {searching ? "Søker..." : "Søk"}
           </button>
-        </div>
-
-        <div className="row row--years">
-          <label>År fra</label>
-          <input
-            type="number"
-            value={yearFrom ?? ""}
-            onChange={(e) => setYearFrom(parseYear(e.target.value))}
-            disabled={loadingCorpus}
-          />
-          <label>År til</label>
-          <input
-            type="number"
-            value={yearTo ?? ""}
-            onChange={(e) => setYearTo(parseYear(e.target.value))}
-            disabled={loadingCorpus}
-          />
-          <span className="muted">
-            Dokumenter i utvalg: {filteredCorpus.length} / {corpus.length}
-          </span>
-        </div>
+        </form>
       </section>
 
       {error && <p className="error">{error}</p>}
@@ -426,7 +419,6 @@ export default function App() {
               <li key={`${hit.bookId}-${idx}`} className="hit">
                 <div className="hit__meta">
                   <strong>{hit.title}</strong>
-                  <span>{hit.year ?? "ukjent år"}</span>
                   {hit.nbUrl ? (
                     <a href={hit.nbUrl} target="_blank" rel="noreferrer">
                       Nettbiblioteket
@@ -446,7 +438,7 @@ export default function App() {
       </section>
 
       <section className="results">
-        <h2>Dokumenter ({selectedFilteredCorpus.length} valgt / {filteredCorpus.length} i filter)</h2>
+        <h2>Dokumenter ({selectedFilteredCorpus.length} valgt / {filteredCorpus.length})</h2>
         <div className="doc-actions">
           <button type="button" className="button-secondary" onClick={selectAllFiltered}>
             Velg alle
@@ -489,7 +481,6 @@ export default function App() {
                   </button>
                   <div className="doc-card__meta-pop">
                     <strong>{doc.title}</strong>
-                    <span className="muted">{doc.year ?? "ukjent år"}</span>
                     {nbUrl ? (
                       <a
                         href={nbUrl}
