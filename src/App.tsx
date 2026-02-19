@@ -431,68 +431,6 @@ export default function App() {
         <p>Typeløftet korpus: fokusert til konkordans.</p>
       </header>
 
-      <section className="card">
-        <form
-          className="row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void runSearch();
-          }}
-        >
-          <label htmlFor="query">Søk</label>
-          <input
-            id="query"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder='Eksempel: "mellom oss"'
-          />
-          <button type="submit" disabled={searching || loadingCorpus}>
-            {searching ? "Søker..." : "Søk"}
-          </button>
-        </form>
-      </section>
-
-      {error && <p className="error">{error}</p>}
-      {loadingCorpus && <p className="muted">Laster korpus...</p>}
-
-      <section className="results">
-        <div className="results__header">
-          <h2>Treff ({sortedHits.length})</h2>
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={downloadConcordancesExcel}
-            disabled={sortedHits.length === 0}
-          >
-            Last ned Excel (.xlsx)
-          </button>
-        </div>
-        {sortedHits.length === 0 ? (
-          <p className="muted">Ingen treff ennå.</p>
-        ) : (
-          <ul>
-            {sortedHits.map((hit, idx) => (
-              <li key={`${hit.bookId}-${idx}`} className="hit">
-                <div className="hit__meta">
-                  <strong>{hit.title}</strong>
-                  {hit.nbUrl ? (
-                    <a href={hit.nbUrl} target="_blank" rel="noreferrer">
-                      Nettbiblioteket
-                    </a>
-                  ) : (
-                    <span className="muted">Ingen URN</span>
-                  )}
-                </div>
-                <div
-                  className="hit__conc"
-                  dangerouslySetInnerHTML={{ __html: hit.concHtml }}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
       <section className="results">
         <h2>Dokumenter ({selectedFilteredCorpus.length} valgt / {filteredCorpus.length})</h2>
         <div className="doc-actions">
@@ -551,6 +489,68 @@ export default function App() {
                 </li>
               );
             })}
+          </ul>
+        )}
+      </section>
+
+      <section className="card">
+        <form
+          className="row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void runSearch();
+          }}
+        >
+          <label htmlFor="query">Søk</label>
+          <input
+            id="query"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder='Eksempel: "mellom oss"'
+          />
+          <button type="submit" disabled={searching || loadingCorpus}>
+            {searching ? "Søker..." : "Søk"}
+          </button>
+        </form>
+      </section>
+
+      {error && <p className="error">{error}</p>}
+      {loadingCorpus && <p className="muted">Laster korpus...</p>}
+
+      <section className="results">
+        <div className="results__header">
+          <h2>Treff ({sortedHits.length})</h2>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={downloadConcordancesExcel}
+            disabled={sortedHits.length === 0}
+          >
+            Last ned Excel (.xlsx)
+          </button>
+        </div>
+        {sortedHits.length === 0 ? (
+          <p className="muted">Ingen treff ennå.</p>
+        ) : (
+          <ul>
+            {sortedHits.map((hit, idx) => (
+              <li key={`${hit.bookId}-${idx}`} className="hit">
+                <div className="hit__meta">
+                  <strong>{hit.title}</strong>
+                  {hit.nbUrl ? (
+                    <a href={hit.nbUrl} target="_blank" rel="noreferrer">
+                      Nettbiblioteket
+                    </a>
+                  ) : (
+                    <span className="muted">Ingen URN</span>
+                  )}
+                </div>
+                <div
+                  className="hit__conc"
+                  dangerouslySetInnerHTML={{ __html: hit.concHtml }}
+                />
+              </li>
+            ))}
           </ul>
         )}
       </section>

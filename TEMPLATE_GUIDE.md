@@ -1,45 +1,81 @@
-## Malguide for enkel konkordansapp
+## Malguide: korpusoppskrift for konkordans
 
-Bruk denne appen som base for en helt enkel korpusapp med kun konkordans.
+Bruk denne guiden når du lager en ny korpusapp etter samme modell: korpus-først, med en tydelig funksjonsprofil (her: konkordans).
 
-### Fast oppsett i denne versjonen
+### 1) Tenkemåte før kode
 
-- Korpusfil: `Øyvind_Vågnes - Korpus.csv`
-- Visning: kun konkordans
-- Ingen grupper, aggregert fane eller analyseeksport
+- Ikke bygg "one size fits all".
+- Velg funksjoner ut fra korpusstørrelse og bruksmønster:
+  - **små korpus**: manuell dokumentseleksjon, fliser, mer interaktiv UI
+  - **store korpus**: enklere filtrering, mindre visuell overhead, tydelige grenser
+- Hold API-kontrakt og dataflyt stabil på tvers av instanser.
 
-### Hurtigoppskrift
+### 2) Hurtigoppskrift
 
-1. Sørg for at `Øyvind_Vågnes - Korpus.csv` ligger i rot.
-2. Sett `metadataFile` i `app.manifest.json` til samme filnavn.
-3. Hold `src/App.tsx` enkel:
-   - appnavn/tittel
-   - (ev.) default årsspenn
-   - søk + resultatliste
+1. Legg korpus-CSV i rot.
+2. Oppdater `app.manifest.json`:
+   - `corpus.metadataFile`
+   - `api.concordanceUrl`
+   - `appName`
+3. Verifiser CSV-felter (`dhlabid`, `urn`, `title` minst).
 4. Kjør lokalt:
    - `npm install`
    - `npm run dev`
-5. Push til GitHub og deploy via Actions.
+5. Push og deploy via GitHub Actions.
 
-### Minimumskrav til CSV
+### 3) Endepunkt og payload (konkordans)
 
-CSV må minst ha disse feltene:
+- Endepunkt: `POST https://api.nb.no/dhlab/conc`
+- Header: `Content-Type: application/json`
+
+Eksempelpayload:
+
+```json
+{
+  "dhlabids": [100000000, 100000001],
+  "html_formatting": true,
+  "limit": 1000,
+  "query": "Norge",
+  "trigram_index": false,
+  "window": 20
+}
+```
+
+Viktig:
+
+- `dhlabids` som tall
+- `urns` kan brukes ved behov
+- normaliser respons før UI (tabellobjekt -> radliste)
+
+### 4) Minimumskrav til CSV
+
+CSV bør minst ha:
 
 - `dhlabid`
 - `urn`
-- `year`
 - `title`
 
-Andre felter kan være med, men brukes ikke av kjernen.
+Valgfritt:
 
-### Hva som vanligvis tunes
+- `year` og andre metadatafelt
 
-- Default årsintervall (hvis filter brukes)
-- FTS5 søkehints i UI
-- Små språkjusteringer i labels
+### 5) UI-oppskrift (anbefalt baseline)
 
-### Hva som normalt ikke røres
+- Søkefelt + Enter-submit
+- Treffliste sortert på tittel
+- Dokumentseleksjon (velg/uvelg) når korpuset er lite nok
+- NB-lenker med `searchText`
+- Nedlasting av treff som Excel (`.xlsx`)
 
-- `/dhlab/conc` kallestruktur
-- Join mellom `docid` og `dhlabid`
-- Deploy-workflow
+### 6) Hva man vanligvis tuner
+
+- labeltekster og hjelpetekst
+- default søkeparametre (`window`, `limit`, `html_formatting`)
+- graden av dokumentvalg i UI
+- eksportkolonner
+
+### 7) Hva som normalt ikke røres
+
+- grunnkontrakt mot `/dhlab/conc`
+- join mellom API-treff og lokal metadata via `dhlabid`
+- deploy-workflow til GitHub Pages
