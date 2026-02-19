@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
+import manifestData from "../app.manifest.json";
+import defaultCorpusCsvUrl from "../Øyvind_Vågnes - Korpus.csv?url";
 
 type CorpusRow = {
   dhlabid: string;
@@ -34,6 +36,20 @@ type ConcordanceHit = {
   nbUrl: string;
 };
 
+type NbCatalogItem = {
+  _links?: {
+    thumbnail_small?: { href?: string };
+    thumbnail_medium?: { href?: string };
+    thumbnail_large?: { href?: string };
+  };
+};
+
+type NbCatalogResponse = {
+  _embedded?: {
+    items?: NbCatalogItem[];
+  };
+};
+
 const DEFAULT_METADATA_FILE = "Øyvind_Vågnes - Korpus.csv";
 const CONCORDANCE_API_URL = "https://api.nb.no/dhlab/conc";
 
@@ -43,6 +59,28 @@ function normalizeUrn(urn: string): string {
 
 function toNettbibliotekUrl(urn: string): string {
   return `https://www.nb.no/items/${encodeURIComponent(normalizeUrn(urn))}`;
+}
+
+async function fetchThumbnailForUrn(urn: string): Promise<string | null> {
+  const normalizedUrn = normalizeUrn(urn);
+  if (!normalizedUrn) {
+    return null;
+  }
+
+  const endpoint = `https://api.nb.no/catalog/v1/items?q=${encodeURIComponent(normalizedUrn)}`;
+  const resp = await fetch(endpoint);
+  if (!resp.ok) {
+    return null;
+  }
+
+  const data = (await resp.json()) as NbCatalogResponse;
+  const item = data._embedded?.items?.[0];
+  return (
+    item?._links?.thumbnail_medium?.href ??
+    item?._links?.thumbnail_small?.href ??
+    item?._links?.thumbnail_large?.href ??
+    null
+  );
 }
 
 function parseYear(value: unknown): number | null {
@@ -67,6 +105,8 @@ export default function App() {
   const [yearFrom, setYearFrom] = useState<number | null>(null);
   const [yearTo, setYearTo] = useState<number | null>(null);
   const [concordanceApiUrl, setConcordanceApiUrl] = useState(CONCORDANCE_API_URL);
+  const [thumbnailsById, setThumbnailsById] = useState<Record<string, string>>({});
+  const [loadingThumbnails, setLoadingThumbnails] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,11 +116,7 @@ export default function App() {
       setError(null);
 
       try {
-        const manifestResp = await fetch("./app.manifest.json");
-        if (!manifestResp.ok) {
-          throw new Error("Klarte ikke lese app.manifest.json");
-        }
-        const manifest = (await manifestResp.json()) as Manifest;
+        const manifest = manifestData as Manifest;
         if (manifest.appName) {
           setAppName(manifest.appName);
           document.title = manifest.appName;
@@ -91,7 +127,12 @@ export default function App() {
 
         const metadataFile =
           manifest.corpus?.metadataFile?.trim() || DEFAULT_METADATA_FILE;
-        const csvResp = await fetch(`./${encodeURIComponent(metadataFile)}`);
+        const csvUrl =
+          metadataFile === DEFAULT_METADATA_FILE
+            ? defaultCorpusCsvUrl
+            : `${import.meta.env.BASE_URL}${encodeURIComponent(metadataFile)}`;
+
+        const csvResp = await fetch(csvUrl);
         if (!csvResp.ok) {
           throw new Error(`Klarte ikke lese korpusfil: ${metadataFile}`);
         }
@@ -134,6 +175,51 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (corpus.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    const rowsToFetch = corpus.filter((row) => row.urn && !thumbnailsById[row.dhlabid]);
+    if (rowsToFetch.length === 0) {
+      return;
+    }
+
+    async function loadThumbnails() {
+      setLoadingThumbnails(true);
+      try {
+        const entries = await Promise.all(
+          rowsToFetch.map(async (row) => {
+            const thumb = await fetchThumbnailForUrn(row.urn);
+            return [row.dhlabid, thumb] as const;
+          })
+        );
+
+        if (!cancelled) {
+          setThumbnailsById((prev) => {
+            const next = { ...prev };
+            for (const [dhlabid, thumb] of entries) {
+              if (thumb) {
+                next[dhlabid] = thumb;
+              }
+            }
+            return next;
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingThumbnails(false);
+        }
+      }
+    }
+
+    void loadThumbnails();
+    return () => {
+      cancelled = true;
+    };
+  }, [corpus, thumbnailsById]);
 
   const corpusById = useMemo(() => {
     const map = new Map<string, CorpusRow>();
@@ -305,6 +391,36 @@ export default function App() {
                 />
               </li>
             ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="results">
+        <h2>Dokumenter ({corpus.length})</h2>
+        {loadingThumbnails && <p className="muted">Henter fliser fra NB...</p>}
+        {corpus.length === 0 ? (
+          <p className="muted">Ingen dokumenter lastet.</p>
+        ) : (
+          <ul className="doc-grid">
+            {corpus.map((doc) => {
+              const nbUrl = doc.urn ? toNettbibliotekUrl(doc.urn) : "";
+              const thumb = thumbnailsById[doc.dhlabid];
+              return (
+                <li key={doc.dhlabid} className="doc-card">
+                  <a href={nbUrl || undefined} target="_blank" rel="noreferrer">
+                    {thumb ? (
+                      <img src={thumb} alt={doc.title} className="doc-card__thumb" />
+                    ) : (
+                      <div className="doc-card__placeholder">Ingen flis</div>
+                    )}
+                  </a>
+                  <div className="doc-card__meta">
+                    <strong>{doc.title}</strong>
+                    <span className="muted">{doc.year ?? "ukjent år"}</span>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
